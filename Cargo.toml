@@ -1,0 +1,12 @@
+[package]
+name = "cassis-explorer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+leptos = { version = "0.8.3", features = ["csr"] }
+console_error_panic_hook = "0.1.7"
+cassis-routing = { path = "../cassis/cassis-routing" }
+cassis-core = { path = "../cassis/cassis-core" }
+futures = "0.3"
+wasm-bindgen-futures = "0.4"
