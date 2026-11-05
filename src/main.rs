@@ -111,6 +111,9 @@ fn is_test_route(a: &RouteAnnouncement) -> bool {
 #[derive(Clone, PartialEq)]
 struct NodeRow {
     pubkey: String,
+    autoname: String,
+    /// The node's color, from its key's autohue.
+    color: String,
     iroh: String,
     iroh_relay: Option<String>,
     from: String,
@@ -128,6 +131,8 @@ impl From<&RouteAnnouncement> for NodeRow {
     fn from(a: &RouteAnnouncement) -> Self {
         NodeRow {
             pubkey: a.node_pubkey.to_hex(),
+            autoname: a.autoname(),
+            color: hue_color(a.autohue()),
             iroh: a.iroh_peer_id.clone(),
             iroh_relay: a.iroh_relay.clone(),
             from: a.from.0.clone(),
@@ -153,12 +158,23 @@ impl NodeRow {
             .map_or("—".to_string(), |s| s.to_string())
     }
 
-    fn money(&self) -> &'static str {
+    /// The unit after [`Self::max_lifetime`], none when unset.
+    fn max_lifetime_unit(&self) -> &'static str {
+        self.max_incoming_lifetime_secs.map_or("", |_| "s")
+    }
+
+    /// Why the route counts as test money, if it does.
+    fn test_reason(&self) -> Option<&'static str> {
         match (self.test, self.tagged_test) {
-            (false, _) => "real",
-            (true, true) => "test (tagged testmoney)",
-            (true, false) => "test (test chain)",
+            (false, _) => None,
+            (true, true) => Some("tagged testmoney"),
+            (true, false) => Some("bridges a test chain"),
         }
+    }
+
+    /// The start of the node key, as shown next to its autoname.
+    fn short_key(&self) -> String {
+        format!("{}…", &self.pubkey[..self.pubkey.len().min(8)])
     }
 }
 
@@ -171,10 +187,25 @@ fn with_ws_scheme(relay: &str) -> String {
     }
 }
 
-/// Fill colors told apart on the dark background, one per router.
-const ROUTER_COLORS: [&str; 8] = [
-    "#58a6ff", "#3fb950", "#d29922", "#f778ba", "#a371f7", "#ff7b72", "#39c5cf", "#e3b341",
-];
+/// Hex color of `hue` (degrees), light enough for the dark background.
+fn hue_color(hue: u16) -> String {
+    // HSL with saturation 70% and lightness 65%.
+    let (s, l) = (0.7, 0.65);
+    let c = (1.0 - (2.0 * l - 1.0_f64).abs()) * s;
+    let h = f64::from(hue % 360) / 60.0;
+    let x = c * (1.0 - (h % 2.0 - 1.0).abs());
+    let (r, g, b) = match h as u8 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = l - c / 2.0;
+    let byte = |v: f64| ((v + m) * 255.0).round() as u8;
+    format!("#{:02x}{:02x}{:02x}", byte(r), byte(g), byte(b))
+}
 
 /// Dark tints behind the network boxes, one per network.
 const NETWORK_COLORS: [&str; 8] = [
@@ -220,21 +251,17 @@ fn routes_dot(rows: &[NodeRow]) -> String {
         networks.entry(&r.from).or_default().insert(&r.pubkey);
         networks.entry(&r.to).or_default().insert(&r.pubkey);
     }
-    let routers: Vec<&str> = rows
-        .iter()
-        .map(|r| r.pubkey.as_str())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let router = |pk: &str| routers.binary_search(&pk).unwrap_or_default();
+    // A row per router, to name and color its nodes.
+    let routers: BTreeMap<&str, &NodeRow> = rows.iter().map(|r| (r.pubkey.as_str(), r)).collect();
+    let router = |pk: &str| routers.keys().position(|k| *k == pk).unwrap_or_default();
     let network = |n: &str| networks.keys().position(|k| *k == n).unwrap_or_default();
 
     let mut dot = String::from(
         "digraph routes {\n\
          rankdir=LR; bgcolor=transparent; nodesep=0.3; ranksep=1.2;\n\
          fontname=\"system-ui\"; fontcolor=\"#e6edf3\";\n\
-         node [shape=circle, style=filled, fixedsize=true, width=0.6, fontsize=9, \
-         fontname=\"monospace\", fontcolor=\"#0d1117\", color=\"#0d1117\"];\n\
+         node [shape=box, style=\"rounded,filled\", margin=\"0.16,0.05\", fontsize=9, \
+         fontname=\"system-ui\", fontcolor=\"#0d1117\", color=\"#0d1117\"];\n\
          edge [penwidth=1.5, arrowsize=0.7];\n",
     );
     for (i, (name, pubkeys)) in networks.iter().enumerate() {
@@ -252,12 +279,20 @@ fn routes_dot(rows: &[NodeRow]) -> String {
             NETWORK_COLORS[i % NETWORK_COLORS.len()],
         );
         for pk in pubkeys {
-            let j = router(pk);
+            let node = routers[pk];
+            // Two words a line, so the box stays compact.
+            let words: Vec<&str> = node.autoname.split('-').collect();
+            let label = words
+                .chunks(2)
+                .map(|w| w.join("-"))
+                .collect::<Vec<_>>()
+                .join("\n");
             dot += &format!(
-                "n{i}_{j} [label={}, tooltip={}, fillcolor=\"{}\"];\n",
-                dot_quote(&pk[..pk.len().min(6)]),
-                dot_quote(pk),
-                ROUTER_COLORS[j % ROUTER_COLORS.len()],
+                "n{i}_{} [label={}, tooltip={}, fillcolor=\"{}\"];\n",
+                router(pk),
+                dot_quote(&label),
+                dot_quote(&format!("{}\n{pk}", node.autoname)),
+                node.color,
             );
         }
         dot += "}\n";
@@ -268,39 +303,88 @@ fn routes_dot(rows: &[NodeRow]) -> String {
             "n{}_{j} -> n{}_{j} [id=\"route-{e}\", color=\"{}\", tooltip={}];\n",
             network(&r.from),
             network(&r.to),
-            ROUTER_COLORS[j % ROUTER_COLORS.len()],
+            r.color,
             dot_quote(&format!(
-                "{} → {}: {} msat + {} ppm",
-                r.from, r.to, r.fee_base_msat, r.fee_ppm
+                "{}: {} → {}, {} msat + {} ppm",
+                r.autoname, r.from, r.to, r.fee_base_msat, r.fee_ppm
             )),
         );
     }
     dot + "}\n"
 }
 
+/// A node's color swatch and autoname.
+#[component]
+fn NodeName(row: NodeRow) -> impl IntoView {
+    view! {
+        <span class="node-name" title=row.pubkey.clone()>
+            <span class="swatch" style=format!("background: {}", row.color)></span>
+            <span class="cell">{row.autoname.clone()}</span>
+        </span>
+    }
+}
+
 /// Every field of a route, untruncated.
 #[component]
 fn RouteDetails(row: NodeRow) -> impl IntoView {
-    let fields = [
-        ("node pubkey", row.pubkey.clone()),
+    let stats = [
+        ("base fee", row.fee_base_msat.to_string(), "msat", true),
+        ("fee rate", row.fee_ppm.to_string(), "ppm", true),
+        ("delta", row.incoming_delta_secs.to_string(), "s", false),
+        ("slack", row.transit_slack_secs.to_string(), "s", false),
+        (
+            "max life",
+            row.max_lifetime(),
+            row.max_lifetime_unit(),
+            false,
+        ),
+    ];
+    let connection = [
         ("iroh peer id", row.iroh.clone()),
         ("iroh relay", row.iroh_relay.clone().unwrap_or("—".into())),
-        ("from", row.from.clone()),
-        ("to", row.to.clone()),
-        ("base fee (msat)", row.fee_base_msat.to_string()),
-        ("fee ppm", row.fee_ppm.to_string()),
-        ("incoming delta (s)", row.incoming_delta_secs.to_string()),
-        ("transit slack (s)", row.transit_slack_secs.to_string()),
-        ("max lifetime (s)", row.max_lifetime()),
-        ("money", row.money().to_string()),
     ];
+    let test_reason = row.test_reason();
     view! {
-        <dl class="details">
-            {fields
-                .into_iter()
-                .map(|(name, value)| view! { <dt>{name}</dt><dd>{value}</dd> })
-                .collect_view()}
-        </dl>
+        <div class="details">
+            <div class="identity">
+                <span class="swatch big" style=format!("background: {}", row.color)></span>
+                <div class="identity-text">
+                    <div class="autoname">{row.autoname.clone()}</div>
+                    <div class="mono key">{row.pubkey.clone()}</div>
+                </div>
+            </div>
+
+            <div class="route-line">
+                <span class="network">{row.from.clone()}</span>
+                <span class="arrow">"→"</span>
+                <span class="network">{row.to.clone()}</span>
+                {test_reason
+                    .map(|reason| view! { <span class="badge" title=reason>"test · " {reason}</span> })}
+            </div>
+
+            <div class="stats">
+                {stats
+                    .into_iter()
+                    .map(|(name, value, unit, primary)| {
+                        view! {
+                            <div class="stat" class:primary=primary>
+                                <div class="stat-label">{name}</div>
+                                <div class="stat-value">
+                                    {value} <span class="unit">" " {unit}</span>
+                                </div>
+                            </div>
+                        }
+                    })
+                    .collect_view()}
+            </div>
+
+            <dl class="connection">
+                {connection
+                    .into_iter()
+                    .map(|(name, value)| view! { <dt>{name}</dt><dd class="mono">{value}</dd> })
+                    .collect_view()}
+            </dl>
+        </div>
     }
 }
 
@@ -641,13 +725,13 @@ fn App() -> impl IntoView {
                             <thead>
                                 <tr>
                                     <th>"node"</th>
-                                    <th>"from"</th>
-                                    <th>"to"</th>
-                                    <th class="num" title="base fee (msat)">"base (msat)"</th>
-                                    <th class="num" title="proportional fee (ppm)">"ppm"</th>
-                                    <th class="num" title="incoming delta (s)">"delta (s)"</th>
-                                    <th class="num" title="transit slack (s)">"slack (s)"</th>
-                                    <th class="num" title="max incoming lifetime (s)">"max life (s)"</th>
+                                    <th>"route"</th>
+                                    <th class="num" title="base fee (msat) + proportional fee (ppm)">
+                                        "fee"
+                                    </th>
+                                    <th class="num dim-col" title="incoming delta (s)">"delta"</th>
+                                    <th class="num dim-col" title="transit slack (s)">"slack"</th>
+                                    <th class="num dim-col" title="max incoming lifetime (s)">"max life"</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -659,28 +743,29 @@ fn App() -> impl IntoView {
                                         view! {
                                             <tr on:click=move |_| selected.set(Some(open.clone()))>
                                                 <td>
-                                                    <div class="cell mono" title=r.pubkey.clone()>
-                                                        {r.pubkey.clone()}
-                                                    </div>
-                                                    <Show when=move || r.test fallback=|| ()>
-                                                        <span class="badge">"test"</span>
-                                                    </Show>
+                                                    <NodeName row=r.clone() />
+                                                    <div class="mono key">{r.short_key()}</div>
                                                 </td>
                                                 <td>
-                                                    <div class="cell" title=r.from.clone()>
-                                                        {r.from.clone()}
+                                                    <div class="route-cell">
+                                                        <span class="cell" title=r.from.clone()>{r.from.clone()}</span>
+                                                        <span class="arrow">"→"</span>
+                                                        <span class="cell" title=r.to.clone()>{r.to.clone()}</span>
+                                                        <Show when=move || r.test fallback=|| ()>
+                                                            <span class="badge">"test"</span>
+                                                        </Show>
                                                     </div>
                                                 </td>
-                                                <td>
-                                                    <div class="cell" title=r.to.clone()>
-                                                        {r.to.clone()}
-                                                    </div>
+                                                <td class="num fee">
+                                                    {r.fee_base_msat}
+                                                    <span class="unit">" msat"</span>
+                                                    <span class="plus">" + "</span>
+                                                    {r.fee_ppm}
+                                                    <span class="unit">" ppm"</span>
                                                 </td>
-                                                <td class="num">{r.fee_base_msat}</td>
-                                                <td class="num">{r.fee_ppm}</td>
-                                                <td class="num">{r.incoming_delta_secs}</td>
-                                                <td class="num">{r.transit_slack_secs}</td>
-                                                <td class="num">{r.max_lifetime()}</td>
+                                                <td class="num dim-col">{r.incoming_delta_secs} <span class="unit">"s"</span></td>
+                                                <td class="num dim-col">{r.transit_slack_secs} <span class="unit">"s"</span></td>
+                                                <td class="num dim-col">{r.max_lifetime()} <span class="unit">{r.max_lifetime_unit()}</span></td>
                                             </tr>
                                         }
                                     }
@@ -715,12 +800,13 @@ fn App() -> impl IntoView {
                                                             <span class="badge">"test"</span>
                                                         </Show>
                                                     </div>
-                                                    <div class="cell mono dim">{r.pubkey.clone()}</div>
+                                                    <NodeName row=r.clone() />
                                                     <div class="card-fees">
+                                                        <span class="fee">
+                                                            {format!("{} msat + {} ppm", r.fee_base_msat, r.fee_ppm)}
+                                                        </span>
                                                         {format!(
-                                                            "{} msat + {} ppm · Δ {}s · slack {}s",
-                                                            r.fee_base_msat,
-                                                            r.fee_ppm,
+                                                            " · Δ {}s · slack {}s",
                                                             r.incoming_delta_secs,
                                                             r.transit_slack_secs,
                                                         )}
@@ -745,12 +831,9 @@ fn App() -> impl IntoView {
                         view! {
                             <div class="modal-backdrop" on:click=move |_| selected.set(None)>
                                 <div class="modal" on:click=|ev| ev.stop_propagation()>
-                                    <div class="modal-head">
-                                        <h3>{format!("{} → {}", row.from, row.to)}</h3>
-                                        <button class="close" on:click=move |_| selected.set(None)>
-                                            "×"
-                                        </button>
-                                    </div>
+                                    <button class="close" on:click=move |_| selected.set(None)>
+                                        "×"
+                                    </button>
                                     <RouteDetails row=row.clone() />
                                 </div>
                             </div>
