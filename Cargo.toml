@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 leptos = { version = "0.8.3", features = ["csr"] }
 console_error_panic_hook = "0.1.7"
-cassis-core = { path = "../cassis/cassis-core", default-features = false }
+cassis-core = { git = "https://github.com/andunieee/cassis", rev = "34a3d2b6a4f01139a183ee6f4fdbe0bd95decbec", default-features = false }
 futures = "0.3"
 wasm-bindgen-futures = "0.4"
 serde = { version = "1", features = ["derive"] }

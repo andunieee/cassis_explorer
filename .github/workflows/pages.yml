@@ -23,14 +23,6 @@ jobs:
         with:
           path: explorer
 
-      # Cargo.toml depends on ../cassis/cassis-core, so keep the two
-      # repositories as siblings inside the workspace.
-      - name: Checkout cassis
-        uses: actions/checkout@v4
-        with:
-          repository: andunieee/cassis
-          path: cassis
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
