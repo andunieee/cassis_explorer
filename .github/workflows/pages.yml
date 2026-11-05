@@ -1,0 +1,76 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout explorer
+        uses: actions/checkout@v4
+        with:
+          path: explorer
+
+      # Cargo.toml depends on ../cassis/cassis-core, so keep the two
+      # repositories as siblings inside the workspace.
+      - name: Checkout cassis
+        uses: actions/checkout@v4
+        with:
+          repository: andunieee/cassis
+          path: cassis
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: explorer
+
+      - name: Install trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build
+        working-directory: explorer
+        run: |
+          if [[ "$GITHUB_REPOSITORY" == *.github.io ]]; then
+            base="/"
+          else
+            base="/${GITHUB_REPOSITORY#*/}/"
+          fi
+          trunk build --release --public-url "$base"
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: explorer/dist
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

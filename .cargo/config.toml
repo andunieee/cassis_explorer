@@ -1,0 +1,5 @@
+[env]
+# secp256k1-sys' bundled C calls memmove without its declaration, which
+# recent clang rejects for wasm32; compiler-builtins provides it at link.
+# Mirrors ../cassis/.cargo/config.toml so builds from this crate work too.
+CFLAGS_wasm32_unknown_unknown = "-Wno-implicit-function-declaration"

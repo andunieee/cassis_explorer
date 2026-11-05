@@ -1,5 +1,4 @@
-use cassis_core::RouteAnnouncement;
-use cassis_routing::fetch_announcements;
+use cassis_core::routing::{fetch_announcements, RouteAnnouncement};
 use leptos::prelude::*;
 
 const RELAYS: [&str; 3] = ["wss://nos.lol", "wss://nostr.mom", "wss://relay.damus.io"];
@@ -14,7 +13,6 @@ struct NodeRow {
     fee_ppm: u64,
     incoming_delta_secs: u64,
     transit_slack_secs: u64,
-    relays: String,
 }
 
 fn to_rows(announcements: &[RouteAnnouncement]) -> Vec<NodeRow> {
@@ -29,7 +27,6 @@ fn to_rows(announcements: &[RouteAnnouncement]) -> Vec<NodeRow> {
             fee_ppm: a.fee_ppm,
             incoming_delta_secs: a.incoming_delta_secs,
             transit_slack_secs: a.transit_slack_secs,
-            relays: a.relays.join(", "),
         })
         .collect()
 }
@@ -62,7 +59,9 @@ fn App() -> impl IntoView {
         let relay = relay.get();
         async move {
             let relays = vec![with_ws_scheme(&relay)];
-            fetch_announcements(&relays).await.map_err(|e| e.to_string())
+            fetch_announcements(&relays)
+                .await
+                .map_err(|e| e.to_string())
         }
     });
 
@@ -164,7 +163,6 @@ fn App() -> impl IntoView {
                                 <th>"fee ppm"</th>
                                 <th>"incoming delta (s)"</th>
                                 <th>"transit slack (s)"</th>
-                                <th>"relays"</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -181,7 +179,6 @@ fn App() -> impl IntoView {
                                             <td class="num">{r.fee_ppm}</td>
                                             <td class="num">{r.incoming_delta_secs}</td>
                                             <td class="num">{r.transit_slack_secs}</td>
-                                            <td class="mono">{r.relays}</td>
                                         </tr>
                                     }
                                 }
