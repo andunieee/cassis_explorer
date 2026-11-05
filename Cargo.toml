@@ -9,3 +9,6 @@ console_error_panic_hook = "0.1.7"
 cassis-core = { path = "../cassis/cassis-core", default-features = false }
 futures = "0.3"
 wasm-bindgen-futures = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+web-sys = { version = "0.3", features = ["Storage"] }

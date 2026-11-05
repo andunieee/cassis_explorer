@@ -6,7 +6,7 @@ body {
 }
 
 .container {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 2rem;
 }
@@ -119,6 +119,7 @@ h2 {
 }
 
 .chips {
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -137,7 +138,7 @@ h2 {
   cursor: pointer;
   color: #8b949e;
   text-decoration: line-through;
-  max-width: 22rem;
+  max-width: min(22rem, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -202,11 +203,186 @@ th {
 
 .mono {
   font-family: ui-monospace, monospace;
-  word-break: break-all;
-  min-width: 16rem;
 }
 
-@media (max-width: 640px) {
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Truncated content of a table cell or card line. */
+.cell {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+td .cell {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+td .cell.mono {
+  max-width: 7rem;
+}
+
+td {
+  white-space: nowrap;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover {
+  background: #161b22;
+}
+
+.customize {
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #8b949e;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.customize.open {
+  color: #e6edf3;
+  border-color: #8b949e;
+}
+
+.custom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0f141b;
+}
+
+.custom-panel .hint {
+  margin: 0;
+}
+
+/* Route details: modal and expanded cards. */
+.details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.details dt {
+  color: #8b949e;
+}
+
+.details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 4, 9, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10;
+}
+
+.modal {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1.25rem;
+  width: 100%;
+  max-width: 40rem;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cards {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card {
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: #161b22;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.card.expanded {
+  border-color: #1f6feb;
+}
+
+.card .cell {
+  max-width: 100%;
+}
+
+.card-route {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.card-route .cell {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.card-route .badge {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.arrow,
+.dim,
+.card-fees {
+  color: #8b949e;
+}
+
+@media (max-width: 720px) {
   .container {
     padding: 1rem;
   }
@@ -214,9 +390,16 @@ th {
   .control-row {
     flex-wrap: wrap;
   }
-}
 
-.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+  .control-row .label:empty {
+    display: none;
+  }
+
+  .table-wrap {
+    display: none;
+  }
+
+  .cards {
+    display: flex;
+  }
 }
