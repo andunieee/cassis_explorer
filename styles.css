@@ -403,3 +403,23 @@ tbody tr:hover {
     display: flex;
   }
 }
+
+.graph {
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+.graph svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.graph .edge {
+  cursor: pointer;
+}
+
+.graph .edge:hover path {
+  stroke-width: 3;
+}

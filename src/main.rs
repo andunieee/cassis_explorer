@@ -4,7 +4,9 @@ use cassis_core::routing::{
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
 
 /// Parameters naming a test chain: `liquid::testnet`, `arkade::mutinynet`...
 const TEST_CHAINS: [&str; 4] = ["testnet", "mutinynet", "signet", "regtest"];
@@ -169,6 +171,113 @@ fn with_ws_scheme(relay: &str) -> String {
     }
 }
 
+/// Fill colors told apart on the dark background, one per router.
+const ROUTER_COLORS: [&str; 8] = [
+    "#58a6ff", "#3fb950", "#d29922", "#f778ba", "#a371f7", "#ff7b72", "#39c5cf", "#e3b341",
+];
+
+/// Dark tints behind the network boxes, one per network.
+const NETWORK_COLORS: [&str; 8] = [
+    "#14202e", "#132619", "#272111", "#261421", "#1e1830", "#291515", "#112628", "#25220e",
+];
+
+/// Longest network name drawn in the graph; the full one is its tooltip.
+const MAX_NETWORK_LABEL: usize = 24;
+
+#[wasm_bindgen]
+extern "C" {
+    /// Lays DOT source out into an SVG string, with graphviz (see index.html).
+    #[wasm_bindgen(js_name = renderDot, catch)]
+    fn render_dot_promise(dot: &str) -> Result<js_sys::Promise, JsValue>;
+}
+
+async fn render_dot(dot: String) -> Result<String, String> {
+    let promise = render_dot_promise(&dot).map_err(|e| format!("{e:?}"))?;
+    let svg = JsFuture::from(promise)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    Ok(svg.as_string().unwrap_or_default())
+}
+
+/// `s` cut to `max` characters, ending in "…" when cut.
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    s.chars().take(max - 1).chain(['…']).collect()
+}
+
+fn dot_quote(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Graphviz source of `rows`: a box per network holding a circle per router
+/// present in it, and an arrow per route between a router's circles. Edge
+/// `i` gets the SVG id `route-{i}`, so clicks map back to `rows[i]`.
+fn routes_dot(rows: &[NodeRow]) -> String {
+    let mut networks: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for r in rows {
+        networks.entry(&r.from).or_default().insert(&r.pubkey);
+        networks.entry(&r.to).or_default().insert(&r.pubkey);
+    }
+    let routers: Vec<&str> = rows
+        .iter()
+        .map(|r| r.pubkey.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let router = |pk: &str| routers.binary_search(&pk).unwrap_or_default();
+    let network = |n: &str| networks.keys().position(|k| *k == n).unwrap_or_default();
+
+    let mut dot = String::from(
+        "digraph routes {\n\
+         rankdir=LR; bgcolor=transparent; nodesep=0.3; ranksep=1.2;\n\
+         fontname=\"system-ui\"; fontcolor=\"#e6edf3\";\n\
+         node [shape=circle, style=filled, fixedsize=true, width=0.6, fontsize=9, \
+         fontname=\"monospace\", fontcolor=\"#0d1117\", color=\"#0d1117\"];\n\
+         edge [penwidth=1.5, arrowsize=0.7];\n",
+    );
+    for (i, (name, pubkeys)) in networks.iter().enumerate() {
+        let test = NetworkId::parse(name).is_ok_and(|id| is_test_network(&id));
+        let style = if test {
+            "rounded,filled,dashed"
+        } else {
+            "rounded,filled"
+        };
+        dot += &format!(
+            "subgraph cluster_{i} {{ label={}; tooltip={}; style=\"{style}\"; \
+             fillcolor=\"{}\"; color=\"#30363d\"; margin=24;\n",
+            dot_quote(&truncate(name, MAX_NETWORK_LABEL)),
+            dot_quote(name),
+            NETWORK_COLORS[i % NETWORK_COLORS.len()],
+        );
+        for pk in pubkeys {
+            let j = router(pk);
+            dot += &format!(
+                "n{i}_{j} [label={}, tooltip={}, fillcolor=\"{}\"];\n",
+                dot_quote(&pk[..pk.len().min(6)]),
+                dot_quote(pk),
+                ROUTER_COLORS[j % ROUTER_COLORS.len()],
+            );
+        }
+        dot += "}\n";
+    }
+    for (e, r) in rows.iter().enumerate() {
+        let j = router(&r.pubkey);
+        dot += &format!(
+            "n{}_{j} -> n{}_{j} [id=\"route-{e}\", color=\"{}\", tooltip={}];\n",
+            network(&r.from),
+            network(&r.to),
+            ROUTER_COLORS[j % ROUTER_COLORS.len()],
+            dot_quote(&format!(
+                "{} → {}: {} msat + {} ppm",
+                r.from, r.to, r.fee_base_msat, r.fee_ppm
+            )),
+        );
+    }
+    dot + "}\n"
+}
+
 /// Every field of a route, untruncated.
 #[component]
 fn RouteDetails(row: NodeRow) -> impl IntoView {
@@ -286,6 +395,20 @@ fn App() -> impl IntoView {
                 .collect::<Vec<_>>()
         })
     });
+    let dot = Memo::new(move |_| rows.with(|r| routes_dot(r)));
+    let graph = LocalResource::new(move || render_dot(dot.get()));
+    // Opens the route whose edge was clicked in the graph.
+    let open_edge = move |ev: leptos::ev::MouseEvent| {
+        let route = ev
+            .target()
+            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+            .and_then(|el| el.closest("g.edge").ok().flatten())
+            .and_then(|edge| edge.id().strip_prefix("route-")?.parse::<usize>().ok())
+            .and_then(|i| rows.with(|r| r.get(i).cloned()));
+        if let Some(route) = route {
+            selected.set(Some(route));
+        }
+    };
     let total = move || announcements.with(Vec::len);
     let hidden_count = move || {
         let hidden = hidden.get();
@@ -479,6 +602,31 @@ fn App() -> impl IntoView {
                     }}
                 </p>
             </Show>
+
+            <section>
+                <h2>"graph"</h2>
+                <Suspense fallback=move || view! { <p>"loading…"</p> }>
+                    {move || match graph.get() {
+                        Some(Err(e)) => {
+                            view! { <p class="error">{format!("failed to draw the graph: {e}")}</p> }
+                                .into_any()
+                        }
+                        _ if rows.with(Vec::is_empty) => {
+                            view! { <p class="hint">"no routes to draw"</p> }.into_any()
+                        }
+                        svg => {
+                            view! {
+                                <div
+                                    class="graph"
+                                    inner_html=svg.and_then(Result::ok).unwrap_or_default()
+                                    on:click=open_edge
+                                ></div>
+                            }
+                                .into_any()
+                        }
+                    }}
+                </Suspense>
+            </section>
 
             <section>
                 <h2>

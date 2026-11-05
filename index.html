@@ -6,6 +6,13 @@
     <title>cassis explorer</title>
     <link data-trunk rel="css" href="styles.css" />
     <link data-trunk rel="rust" />
+    <script>
+      // Graphviz compiled to wasm, for the routes graph.
+      const graphviz = import(
+        "https://cdn.jsdelivr.net/npm/@hpcc-js/wasm-graphviz@1.29.2/dist/index.js"
+      ).then((m) => m.Graphviz.load());
+      window.renderDot = (dot) => graphviz.then((g) => g.dot(dot));
+    </script>
   </head>
   <body></body>
 </html>
