@@ -27,15 +27,71 @@ h2 {
   padding-bottom: 0.5rem;
 }
 
-.relay-picker {
+.controls {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
-.relay-picker select,
-.relay-picker input {
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.control-row .label {
+  width: 4rem;
+  flex-shrink: 0;
+  color: #8b949e;
+  font-size: 0.85rem;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmented button {
+  background: #161b22;
+  border: none;
+  border-right: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.segmented button:last-child {
+  border-right: none;
+}
+
+.segmented button.active {
+  background: #1f6feb;
+  color: #fff;
+}
+
+.segmented .custom-indicator {
+  cursor: default;
+  color: #8b949e;
+}
+
+.segmented .custom-indicator.active {
+  background: #30363d;
+  color: #e6edf3;
+}
+
+.add-relay {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+  max-width: 28rem;
+}
+
+.add-relay input {
+  flex: 1;
   background: #161b22;
   border: 1px solid #30363d;
   color: #e6edf3;
@@ -44,11 +100,7 @@ h2 {
   font-size: 0.85rem;
 }
 
-.relay-picker input {
-  flex: 1;
-}
-
-.relay-picker button {
+.add-relay button {
   background: #238636;
   border: 1px solid #2ea043;
   color: #fff;
@@ -78,6 +130,55 @@ h2 {
   border-radius: 999px;
   padding: 0.25rem 0.75rem;
   font-size: 0.85rem;
+  color: #e6edf3;
+}
+
+.chip.toggle {
+  cursor: pointer;
+  color: #8b949e;
+  text-decoration: line-through;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip.toggle.on {
+  color: #e6edf3;
+  text-decoration: none;
+  border-color: #1f6feb;
+  background: rgba(31, 111, 235, 0.15);
+}
+
+.chip.toggle.test.on {
+  border-color: #d29922;
+  background: rgba(210, 153, 34, 0.15);
+}
+
+.hint {
+  color: #8b949e;
+  font-size: 0.8rem;
+  margin: 0 0 0.5rem;
+}
+
+.count {
+  color: #8b949e;
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
+.badge {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  font-family: system-ui, sans-serif;
+  font-size: 0.7rem;
+  color: #d29922;
+  border: 1px solid #d29922;
+}
+
+.table-wrap {
+  overflow-x: auto;
 }
 
 table {
@@ -102,6 +203,17 @@ th {
 .mono {
   font-family: ui-monospace, monospace;
   word-break: break-all;
+  min-width: 16rem;
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .control-row {
+    flex-wrap: wrap;
+  }
 }
 
 .num {
