@@ -232,6 +232,33 @@ td .key {
   margin: 0.1rem 0 0 1.1rem;
 }
 
+/* A network name: the kind (protocol) bold in its color, then the param
+   (chain, mint or operator host, invite code) muted and monospaced. */
+.network-name .kind {
+  font-weight: 600;
+}
+
+.network-name .sep {
+  color: #484f58;
+  margin: 0 0.05em;
+}
+
+.network-name .param {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  color: #8b949e;
+}
+
+/* A test chain's param, in the test badge's amber. */
+.network-name.test .param {
+  color: #d29922;
+  font-style: italic;
+}
+
+.chip.toggle:not(.on) .network-name {
+  opacity: 0.55;
+}
+
 .route-cell {
   display: flex;
   align-items: center;
@@ -366,7 +393,6 @@ tbody tr:hover {
 }
 
 .route-line .network {
-  font-weight: 600;
   overflow-wrap: anywhere;
 }
 

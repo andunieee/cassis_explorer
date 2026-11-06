@@ -212,8 +212,37 @@ const NETWORK_COLORS: [&str; 8] = [
     "#14202e", "#132619", "#272111", "#261421", "#1e1830", "#291515", "#112628", "#25220e",
 ];
 
-/// Longest network name drawn in the graph; the full one is its tooltip.
-const MAX_NETWORK_LABEL: usize = 24;
+/// Longest network param drawn in the graph; the full name is its tooltip.
+const MAX_NETWORK_PARAM: usize = 22;
+
+/// A network name split at `::`: its kind and, if any, its param. Lenient,
+/// so names that don't parse still render.
+fn network_parts(name: &str) -> (&str, Option<&str>) {
+    match name.split_once("::") {
+        Some((kind, param)) => (kind, Some(param)),
+        None => (name, None),
+    }
+}
+
+/// The color a network kind is drawn in, the same wherever it shows.
+fn kind_color(kind: &str) -> String {
+    let hue = match kind {
+        "bitcoin" => 30,
+        "lightning" => 50,
+        "liquid" => 175,
+        "cashu" => 280,
+        "fedimint" => 215,
+        "arkade" => 330,
+        "rootstock" => 120,
+        // Unknown kinds get a stable hue from their name.
+        _ => {
+            kind.bytes()
+                .fold(0u16, |h, b| h.wrapping_mul(31).wrapping_add(b.into()))
+                % 360
+        }
+    };
+    hue_color(hue)
+}
 
 #[wasm_bindgen]
 extern "C" {
@@ -236,6 +265,31 @@ fn truncate(s: &str, max: usize) -> String {
         return s.to_string();
     }
     s.chars().take(max - 1).chain(['…']).collect()
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Graphviz HTML-like label of a network, styled like [`NetworkName`].
+fn network_label(name: &str, test: bool) -> String {
+    let (kind, param) = network_parts(name);
+    let mut label = format!(
+        "<<B><FONT COLOR=\"{}\">{}</FONT></B>",
+        kind_color(kind),
+        html_escape(kind)
+    );
+    if let Some(param) = param {
+        let color = if test { "#d29922" } else { "#8b949e" };
+        label += &format!(
+            "<FONT COLOR=\"#484f58\">::</FONT><FONT FACE=\"monospace\" COLOR=\"{color}\">{}</FONT>",
+            html_escape(&truncate(param, MAX_NETWORK_PARAM))
+        );
+    }
+    label + ">"
 }
 
 fn dot_quote(s: &str) -> String {
@@ -274,7 +328,7 @@ fn routes_dot(rows: &[NodeRow]) -> String {
         dot += &format!(
             "subgraph cluster_{i} {{ label={}; tooltip={}; style=\"{style}\"; \
              fillcolor=\"{}\"; color=\"#30363d\"; margin=24;\n",
-            dot_quote(&truncate(name, MAX_NETWORK_LABEL)),
+            network_label(name, test),
             dot_quote(name),
             NETWORK_COLORS[i % NETWORK_COLORS.len()],
         );
@@ -324,6 +378,22 @@ fn NodeName(row: NodeRow) -> impl IntoView {
     }
 }
 
+/// A network name, its kind colored and its param muted (amber for a test
+/// chain). `class` is added to the outer span, e.g. `cell` to truncate it.
+#[component]
+fn NetworkName(name: String, #[prop(optional)] class: &'static str) -> impl IntoView {
+    let test = NetworkId::parse(&name).is_ok_and(|id| is_test_network(&id));
+    let (kind, param) = network_parts(&name);
+    let color = format!("color: {}", kind_color(kind));
+    let (kind, param) = (kind.to_string(), param.map(str::to_string));
+    view! {
+        <span class=format!("network-name {class}") class:test=test title=name.clone()>
+            <span class="kind" style=color>{kind}</span>
+            {param.map(|p| view! { <span class="sep">"::"</span><span class="param">{p}</span> })}
+        </span>
+    }
+}
+
 /// Every field of a route, untruncated.
 #[component]
 fn RouteDetails(row: NodeRow) -> impl IntoView {
@@ -355,9 +425,9 @@ fn RouteDetails(row: NodeRow) -> impl IntoView {
             </div>
 
             <div class="route-line">
-                <span class="network">{row.from.clone()}</span>
+                <NetworkName name=row.from.clone() class="network" />
                 <span class="arrow">"→"</span>
-                <span class="network">{row.to.clone()}</span>
+                <NetworkName name=row.to.clone() class="network" />
                 {test_reason
                     .map(|reason| view! { <span class="badge" title=reason>"test · " {reason}</span> })}
             </div>
@@ -666,7 +736,7 @@ fn App() -> impl IntoView {
                                                         title=n.clone()
                                                         on:click=move |_| toggle_network(n.clone())
                                                     >
-                                                        {n.clone()}
+                                                        <NetworkName name=n.clone() />
                                                     </button>
                                                 }
                                             }
@@ -748,9 +818,9 @@ fn App() -> impl IntoView {
                                                 </td>
                                                 <td>
                                                     <div class="route-cell">
-                                                        <span class="cell" title=r.from.clone()>{r.from.clone()}</span>
+                                                        <NetworkName name=r.from.clone() class="cell" />
                                                         <span class="arrow">"→"</span>
-                                                        <span class="cell" title=r.to.clone()>{r.to.clone()}</span>
+                                                        <NetworkName name=r.to.clone() class="cell" />
                                                         <Show when=move || r.test fallback=|| ()>
                                                             <span class="badge">"test"</span>
                                                         </Show>
@@ -793,9 +863,9 @@ fn App() -> impl IntoView {
                                                 let r = r.clone();
                                                 view! {
                                                     <div class="card-route">
-                                                        <span class="cell">{r.from.clone()}</span>
+                                                        <NetworkName name=r.from.clone() class="cell" />
                                                         <span class="arrow">"→"</span>
-                                                        <span class="cell">{r.to.clone()}</span>
+                                                        <NetworkName name=r.to.clone() class="cell" />
                                                         <Show when=move || r.test fallback=|| ()>
                                                             <span class="badge">"test"</span>
                                                         </Show>
