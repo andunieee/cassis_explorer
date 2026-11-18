@@ -121,8 +121,6 @@ struct NodeRow {
     fee_base_msat: u64,
     fee_ppm: u64,
     incoming_delta_secs: u64,
-    transit_slack_secs: u64,
-    max_incoming_lifetime_secs: Option<u64>,
     tagged_test: bool,
     test: bool,
 }
@@ -140,8 +138,6 @@ impl From<&RouteAnnouncement> for NodeRow {
             fee_base_msat: a.fee_base_msat,
             fee_ppm: a.fee_ppm,
             incoming_delta_secs: a.incoming_delta_secs,
-            transit_slack_secs: a.transit_slack_secs,
-            max_incoming_lifetime_secs: a.max_incoming_lifetime_secs,
             tagged_test: a.test_money,
             test: is_test_route(a),
         }
@@ -151,16 +147,6 @@ impl From<&RouteAnnouncement> for NodeRow {
 impl NodeRow {
     fn key(&self) -> String {
         format!("{}-{}->{}", self.pubkey, self.from, self.to)
-    }
-
-    fn max_lifetime(&self) -> String {
-        self.max_incoming_lifetime_secs
-            .map_or("—".to_string(), |s| s.to_string())
-    }
-
-    /// The unit after [`Self::max_lifetime`], none when unset.
-    fn max_lifetime_unit(&self) -> &'static str {
-        self.max_incoming_lifetime_secs.map_or("", |_| "s")
     }
 
     /// Why the route counts as test money, if it does.
@@ -401,13 +387,6 @@ fn RouteDetails(row: NodeRow) -> impl IntoView {
         ("base fee", row.fee_base_msat.to_string(), "msat", true),
         ("fee rate", row.fee_ppm.to_string(), "ppm", true),
         ("delta", row.incoming_delta_secs.to_string(), "s", false),
-        ("slack", row.transit_slack_secs.to_string(), "s", false),
-        (
-            "max life",
-            row.max_lifetime(),
-            row.max_lifetime_unit(),
-            false,
-        ),
     ];
     let connection = [
         ("iroh peer id", row.iroh.clone()),
@@ -799,9 +778,12 @@ fn App() -> impl IntoView {
                                     <th class="num" title="base fee (msat) + proportional fee (ppm)">
                                         "fee"
                                     </th>
-                                    <th class="num dim-col" title="incoming delta (s)">"delta"</th>
-                                    <th class="num dim-col" title="transit slack (s)">"slack"</th>
-                                    <th class="num dim-col" title="max incoming lifetime (s)">"max life"</th>
+                                    <th
+                                        class="num dim-col"
+                                        title="seconds between the router's outgoing and incoming expiry, slack included"
+                                    >
+                                        "delta"
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -834,8 +816,6 @@ fn App() -> impl IntoView {
                                                     <span class="unit">" ppm"</span>
                                                 </td>
                                                 <td class="num dim-col">{r.incoming_delta_secs} <span class="unit">"s"</span></td>
-                                                <td class="num dim-col">{r.transit_slack_secs} <span class="unit">"s"</span></td>
-                                                <td class="num dim-col">{r.max_lifetime()} <span class="unit">{r.max_lifetime_unit()}</span></td>
                                             </tr>
                                         }
                                     }
@@ -875,11 +855,7 @@ fn App() -> impl IntoView {
                                                         <span class="fee">
                                                             {format!("{} msat + {} ppm", r.fee_base_msat, r.fee_ppm)}
                                                         </span>
-                                                        {format!(
-                                                            " · Δ {}s · slack {}s",
-                                                            r.incoming_delta_secs,
-                                                            r.transit_slack_secs,
-                                                        )}
+                                                        {format!(" · Δ {}s", r.incoming_delta_secs)}
                                                     </div>
                                                 }
                                             }
